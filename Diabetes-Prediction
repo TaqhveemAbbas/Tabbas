@@ -1,0 +1,78 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+import streamlit as st
+
+# Load your data
+data = pd.read_csv('diabetes.csv')
+
+# Split data into features and labels
+X = data.drop(columns='Outcome', axis=1)
+Y = data['Outcome']
+
+# Split the dataset into training and testing sets
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=2)
+
+# Standardize the data
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+### 1. Hyperparameter Tuning for SVM
+# Define a parameter grid
+param_grid = {
+    'C': [0.1, 1, 10, 100],
+    'gamma': [1, 0.1, 0.01, 0.001],
+    'kernel': ['rbf', 'linear']
+}
+
+# Use GridSearchCV to find the best parameters for SVM
+grid = GridSearchCV(SVC(), param_grid, refit=True, verbose=0, cv=5)
+grid.fit(X_train, Y_train)
+
+# Best SVM model after tuning
+svm_best = grid.best_estimator_
+
+### 2. Try a Random Forest model
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=2)
+rf_classifier.fit(X_train, Y_train)
+
+### 3. Ensemble with Voting Classifier
+voting_classifier = VotingClassifier(
+    estimators=[('svm', svm_best), ('rf', rf_classifier)],
+    voting='hard'
+)
+voting_classifier.fit(X_train, Y_train)
+
+# Evaluate the model
+X_test_prediction = voting_classifier.predict(X_test)
+test_data_accuracy = accuracy_score(X_test_prediction, Y_test)
+st.write("Ensemble Model Accuracy on Test Data:", test_data_accuracy)
+
+# Streamlit app
+st.title("Diabetes Prediction System")
+
+# Collect user input
+pregnancies = st.number_input("Pregnancies", min_value=0, max_value=20, value=0)
+glucose = st.number_input("Glucose", min_value=0, max_value=200, value=0)
+blood_pressure = st.number_input("Blood Pressure", min_value=0, max_value=140, value=0)
+skin_thickness = st.number_input("Skin Thickness", min_value=0, max_value=100, value=0)
+insulin = st.number_input("Insulin", min_value=0, max_value=846, value=0)
+bmi = st.number_input("BMI", min_value=0.0, max_value=67.1, value=0.0)
+dpf = st.number_input("Diabetes Pedigree Function", min_value=0.0, max_value=2.5, value=0.0, format="%.3f")
+age = st.number_input("Age", min_value=0, max_value=120, value=0)
+
+# Predict diabetes
+if st.button("Predict"):
+    user_data = np.array([[pregnancies, glucose, blood_pressure, skin_thickness, insulin, bmi, dpf, age]])
+    user_data = scaler.transform(user_data)  # Apply the same scaling
+    prediction = voting_classifier.predict(user_data)
+    
+    if prediction[0] == 1:
+        st.write("The model predicts that the patient **has diabetes**.")
+    else:
+        st.write("The model predicts that the patient **does not have diabetes**.")
